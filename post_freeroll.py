@@ -104,21 +104,23 @@ def parse_pokerlistings(soup):
         rows = table.find_all('tr')[1:][:30]  # Skip header
         for row in rows:
             tds = row.find_all('td')
-            if len(tds) >= 5:
+            if len(tds) >= 4:  # Fix: >=4, pois prize é tds[3]
                 full_brand = tds[0].get_text(strip=True)
-                # Split: "1 hour 7 minutes to start | 888poker<br>Mystery Bounty 33 - Freebuy"
+                # Split por | pra time e brand
                 parts = full_brand.split('|')
                 if len(parts) >= 2:
                     time_str = parts[0].strip()
                     site_part = parts[1].strip()
-                    site_name = next((k for k in SITE_MAP if k in site_part.lower()), site_part.split('<br>')[0].lower().replace('poker', '').strip())
-                    name = site_part.split('<br>')[1].strip() if '<br>' in site_part else 'Freeroll'
+                    # Split por <br> pra site e name
+                    site_lines = site_part.split('<br>')
+                    site_name = site_lines[0].lower().replace('poker', '').strip()
+                    name = site_lines[1].strip() if len(site_lines) > 1 else 'Freeroll'
                 else:
                     time_str = tds[1].get_text(strip=True)
-                    site_name = next((k for k in SITE_MAP if k in full_brand.lower()), full_brand.lower().replace('poker', '').strip())
+                    site_name = full_brand.lower().replace('poker', '').strip()
                     name = 'Freeroll'
-                prize = tds[4].get_text(strip=True).replace('prize: ', '').strip()
-                pw_text = tds[3].get_text(strip=True).strip()
+                prize = tds[3].get_text(strip=True).replace('prize: ', '').strip()  # Fix: tds[3] prize
+                pw_text = tds[2].get_text(strip=True).strip()  # Fix: tds[2] password
                 senha = pw_text if pw_text and pw_text not in ['—', 'none', ''] else 'No password required'
                 if 'to start' in time_str.lower() and is_torneio_postavel('hoje', time_str):
                     eventos.append({'sala': site_name, 'senha': senha, 'data': 'hoje', 'hora': time_str, 'prize': prize, 'name': name})
@@ -135,4 +137,94 @@ def parse_thenuts(soup):
             senha = senha_match.group(1) if senha_match else 'No password required'
             time_match = re.search(r'{sala}.*?time et[:\s]*(\d{{1,2}}:\d{{2}}\s*(am|pm)?)'.format(sala=sala), texto, re.IGNORECASE | re.DOTALL)
             if time_match and is_torneio_postavel('hoje', time_match.group(1), 'US/Eastern'):
-                eventos.append
+                eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje', 'hora': time_match.group(1)})
+    print(f"Thenuts: {len(eventos)} encontrados")
+    return eventos
+
+def parse_freerollpass(soup):
+    eventos, agendamentos = [], []
+    tabelas = soup.find_all('table')
+    for tabela in tabelas:
+        rows = tabela.find_all('tr')[1:]
+        for row in rows:
+            cols = row.find_all(['td', 'th'])
+            if len(cols) >= 3:
+                sala = cols[0].get_text(strip=True).lower()
+                if not any(k in sala for k in SITE_MAP):
+                    continue
+                hora = cols[1].get_text(strip=True)
+                senha_col = cols[2].get_text(strip=True).lower()
+                senha = re.search(r'([A-Z0-9]{4,})', senha_col)
+                senha = senha.group(1) if senha else 'No password required'
+                horario_disp = re.search(r'(disponível|available).*?(\d{1,2}:\d{2})', senha_col, re.IGNORECASE)
+                if is_torneio_postavel('hoje', hora):
+                    eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje', 'hora': hora})
+                elif horario_disp and is_torneio_postavel('hoje', hora):
+                    agendamentos.append({'sala': sala, 'horario_senha': horario_disp.group(2), 'data_torneio': 'hoje', 'hora_torneio': hora, 'url': 'https://freerollpass.com/pt'})
+    print(f"FreerollPass: {len(eventos)} encontrados")
+    return eventos, agendamentos
+
+def parse_raketherake(soup):
+    eventos, agendamentos = [], []
+    texto = soup.get_text().lower()
+    for sala in SITE_MAP:
+        if sala in texto:
+            senha_match = re.search(r'{sala}.*?password[:\s]*([A-Z0-9]{{4,10}}|no password)'.format(sala=sala), texto, re.IGNORECASE | re.DOTALL)
+            senha = senha_match.group(1) if senha_match else 'No password required'
+            horario_match = re.search(r'{sala}.*?(password available|senha disponível).*?(\d{{1,2}}:\d{{2}})', texto, re.IGNORECASE | re.DOTALL)
+            if is_torneio_postavel('hoje', ''):
+                eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje'})
+            elif horario_match:
+                agendamentos.append({'sala': sala, 'horario_senha': horario_match.group(2), 'url': 'https://www.raketherake.com/poker/freerolls'})
+    print(f"RakeTheRake: {len(eventos)} encontrados")
+    return eventos, agendamentos
+
+def parse_generic(soup, url):
+    eventos, agend = [], []
+    texto = soup.get_text().lower()
+    for sala in SITE_MAP:
+        if sala in texto:
+            padroes_senha = re.findall(r'(?:password|senha|pw)[:\s]*([A-Z0-9]{4,10}|no password)', texto, re.IGNORECASE)
+            senha = padroes_senha[0] if padroes_senha else 'No password required'
+            padroes_tempo = re.findall(r'(\d{2}:\d{2}\s*(CET|ET)?|(\d+)\s*(minutes?|hours?)\s*to start)', texto)
+            for tempo in padroes_tempo:
+                hora_str = tempo[0] if tempo[0] else f"{tempo[2]} {tempo[3]} to start"
+                if is_torneio_postavel('hoje', hora_str):
+                    eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje', 'hora': hora_str})
+                    break
+    print(f"Generic ({url.split('/')[-2]}): {len(eventos)} encontrados")
+    return eventos, agend
+
+def buscar_senhas():
+    eventos, agendamentos = [], []
+    for url in SITES:  # Todos pra debug
+        try:
+            resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            if 'pokerlistings' in url:
+                eventos.extend(parse_pokerlistings(soup))
+            elif 'thenuts' in url:
+                eventos.extend(parse_thenuts(soup))
+            elif 'freerollpass' in url:
+                evs, ags = parse_freerollpass(soup)
+                eventos.extend(evs)
+                agendamentos.extend(ags)
+            elif 'raketherake' in url:
+                evs, ags = parse_raketherake(soup)
+                eventos.extend(evs)
+                agendamentos.extend(ags)
+            else:
+                evs, ags = parse_generic(soup, url)
+                eventos.extend(evs)
+                agendamentos.extend(ags)
+        except Exception as e:
+            print(f"Erro em {url}: {e}")
+    seen = set()
+    unique = [ev for ev in eventos if (ev['senha'], ev['sala']) not in seen and is_torneio_postavel(ev.get('data', 'hoje'), ev.get('hora', '')) and seen.add((ev['senha'], ev['sala']))]
+    print(f"Total unique em 24h: {len(unique)}")
+    return unique[:5], agendamentos
+
+def buscar_senha_agendada(url, sala):
+    for tentativa in range(2):
+        try:
+            print(f"T
