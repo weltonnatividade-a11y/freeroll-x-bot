@@ -15,12 +15,16 @@ api_secret = os.getenv('TWITTER_API_SECRET')
 access_token = os.getenv('TWITTER_ACCESS_TOKEN')
 access_token_secret = os.getenv('TWITTER_ACCESS_TOKEN_SECRET')
 
-client = tweepy.Client(
-    consumer_key=api_key,
-    consumer_secret=api_secret,
-    access_token=access_token,
-    access_token_secret=access_token_secret
-)
+try:
+    client = tweepy.Client(
+        consumer_key=api_key,
+        consumer_secret=api_secret,
+        access_token=access_token,
+        access_token_secret=access_token_secret
+    )
+    print("Conexão com Twitter/X inicializada com sucesso")
+except Exception as e:
+    print(f"Erro ao inicializar tweepy.Client: {e}")
 
 # Sites
 SITES = [
@@ -242,3 +246,33 @@ def buscar_senhas():
     unique = [ev for ev in eventos if (ev['senha'], ev['sala']) not in seen and is_torneio_postavel(ev.get('data', 'hoje'), ev.get('hora', '')) and seen.add((ev['senha'], ev['sala']))]
     print(f"Total unique em 24h: {len(unique)}")
     return unique[:5], agendamentos
+
+def postar_freerolls(eventos):
+    if not eventos:
+        print("Nenhum torneio encontrado para postar")
+        return
+    for evento in eventos:
+        sala = evento['sala']
+        senha = evento['senha']
+        link = SITE_MAP.get(sala, {}).get('link', LINK_FIXO)
+        lang = SITE_MAP.get(sala, {}).get('lang', 'en')
+        template = random.choice(TEMPLATES_PT if lang == 'pt' else TEMPLATES_EN)
+        mensagem = template.format(sala=sala.capitalize(), senhas=senha, link=link)
+        try:
+            client.create_tweet(text=mensagem)
+            print(f"Postagem enviada para {sala}: {mensagem}")
+            time.sleep(5)  # Evita atingir limites da API
+        except Exception as e:
+            print(f"Erro ao postar para {sala}: {e}")
+
+def main():
+    print("Iniciando busca de freerolls...")
+    eventos, agendamentos = buscar_senhas()
+    print(f"Eventos encontrados: {len(eventos)}")
+    print(f"Agendamentos encontrados: {len(agendamentos)}")
+    postar_freerolls(eventos)
+    for agendamento in agendamentos:
+        print(f"Agendamento para {agendamento['sala']} às {agendamento['horario_senha']}: {agendamento['url']}")
+
+if __name__ == "__main__":
+    main()
