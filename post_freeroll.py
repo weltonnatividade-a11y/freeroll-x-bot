@@ -28,17 +28,19 @@ except Exception as e:
 
 # Cabeçalhos para evitar 403
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5"
 }
 
-# Sites (removido freerollpass.com, adicionado CardsChat)
+# Sites (removido CardsChat, adicionado 888poker)
 SITES = [
     "https://www.pokerlistings.com/free-rolls",
-    "https://www.cardschat.com/poker-freerolls.php",  # Novo site
-    "https://www.thenuts.com/freerolls/",
-    "https://freerollpasswords.com/",
+    "https://www.thenuts.com/freerolls",
+    "https://freerollpasswords.com",
     "https://www.raketherake.com/poker/freerolls",
-    "https://pokerfreerollpasswords.com/#freerolls-today"
+    "https://pokerfreerollpasswords.com",
+    "https://www.888poker.com/poker-promotions/freerolls"
 ]
 
 # Salas e afiliados (URLs completas)
@@ -115,23 +117,30 @@ def parse_horario_torneio(data_str, hora_str=None, timezone_str="UTC"):
         print(f"Erro ao parsear data/hora: {e}")
         return None
 
+# Função para limpar URLs
+def limpar_url(url):
+    return url.strip().rstrip(":/")
+
 # Função para obter freerolls
 def obter_freerolls():
     freerolls = []
     for site in SITES:
+        site = limpar_url(site)  # Limpa o URL
+        print(f"Tentando acessar: {site}")
         try:
             response = requests.get(site, headers=HEADERS, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
             
             # Ajuste os seletores para cada site
-            if "cardschat.com" in site:
-                torneios = soup.find_all("tr", class_="freeroll-row") or soup.find_all("div", class_="freeroll-item")
-            elif "pokerfreerollpasswords.com" in site:
+            if "pokerfreerollpasswords.com" in site:
                 torneios = soup.find_all("div", class_="tournament-item") or soup.find_all("article")
+            elif "888poker.com" in site:
+                torneios = soup.find_all("div", class_=["tournament", "freeroll-event"])
             else:
                 torneios = soup.find_all("tr", class_=["freeroll-row", "tournament-row", "event-row"]) or soup.find_all("div", class_=["freeroll", "tournament"])
             
+            print(f"Torneios encontrados em {site}: {len(torneios)}")
             for torneio in torneios:
                 try:
                     nome = torneio.find(["td", "div"], class_=["tournament-name", "name", "title"]) or torneio.find("h3") or torneio.find("h4")
@@ -165,6 +174,7 @@ def obter_freerolls():
                                 "link": SITE_MAP.get(sala, {}).get("link", LINK_FIXO),
                                 "lang": SITE_MAP.get(sala, {}).get("lang", "en")
                             })
+                            print(f"Freeroll adicionado: {nome} na {sala}")
                 except Exception as e:
                     print(f"Erro ao processar torneio em {site}: {e}")
                     continue
