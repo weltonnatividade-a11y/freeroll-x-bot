@@ -10,8 +10,6 @@ import zoneinfo
 import json
 import logging
 from difflib import SequenceMatcher
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 import schedule
 
 # Configuração de logging
@@ -85,20 +83,39 @@ TEMPLATES_PT = [
 
 LINK_FIXO = "https://linkr.bio/pokersenha"
 
-# Função para scraping dinâmico com Selenium
+# Import opcional do Selenium
+SELENIUM_AVAILABLE = False
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    SELENIUM_AVAILABLE = True
+    print("Selenium disponível - sites dinâmicos serão scraped com JS.")
+except ImportError:
+    print("Selenium não instalado. Usando fallback requests para sites dinâmicos (pode falhar em JS pesado). Instale com 'pip install selenium'.")
+
+# Função para scraping dinâmico com Selenium (ou fallback)
 def scrape_dynamic_site(url):
-    options = Options()
-    options.headless = True
-    options.add_argument(f"user-agent={HEADERS['User-Agent']}")
+    if SELENIUM_AVAILABLE:
+        options = Options()
+        options.headless = True
+        options.add_argument(f"user-agent={HEADERS['User-Agent']}")
+        try:
+            driver = webdriver.Chrome(options=options)
+            driver.get(url)
+            time.sleep(3)  # Espera carregar
+            soup = BeautifulSoup(driver.page_source, "html.parser")
+            driver.quit()
+            return soup
+        except Exception as e:
+            logging.error(f"Erro ao acessar {url} com Selenium: {e}")
+            print(f"Fallback para requests em {url}")
+    # Fallback: requests simples
     try:
-        driver = webdriver.Chrome(options=options)
-        driver.get(url)
-        time.sleep(3)  # Espera carregar
-        soup = BeautifulSoup(driver.page_source, "html.parser")
-        driver.quit()
-        return soup
+        response = requests.get(url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+        return BeautifulSoup(response.text, "html.parser")
     except Exception as e:
-        logging.error(f"Erro ao acessar {url} com Selenium: {e}")
+        logging.error(f"Erro no fallback requests para {url}: {e}")
         return None
 
 # Função para parsear data e horário
