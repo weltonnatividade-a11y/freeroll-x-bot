@@ -32,7 +32,7 @@ SITES = [
     "https://pokerfreerollpasswords.com/#freerolls-today"
 ]
 
-# Salas e afiliados (expandido)
+# Salas e afiliados
 SITE_MAP = {
     'coinpoker': {'lang': 'pt', 'link': 'https://record.coinpokeraffiliates.com/_zcOgBAtPAXHUOsjNOfgKeWNd7ZgqdRLk/1/'},
     '888poker': {'lang': 'pt', 'link': 'https://ic.aff-handler.com/c/48566?sr=1068421'},
@@ -66,21 +66,21 @@ TEMPLATES_PT = [
 LINK_FIXO = "https://linkr.bio/pokersenha"
 
 def parse_horario_torneio(data_str, hora_str=None, timezone='UTC'):
-    """Melhorado: Lida com 'hoje' + relative 'X minutes to start'."""
     agora = datetime.now(zoneinfo.ZoneInfo(timezone))
     if hora_str and 'to start' in hora_str.lower():
+        # Relative time
         mins_match = re.search(r'(\d+)\s*(minutes?|hours?)(?:\s+(\d+)\s*minutes?)?', hora_str.lower())
         if mins_match:
             hours = int(mins_match.group(1)) if 'hour' in mins_match.group(2) else 0
             mins = int(mins_match.group(3)) if mins_match.group(3) else int(mins_match.group(1))
             return agora + timedelta(hours=hours, minutes=mins)
-    # Fallback pra absolute (seu código)
+    # Absolute fallback
     try:
         for fmt in ['%m/%d/%Y', '%d/%m/%Y', '%Y-%m-%d']:
             try:
                 data = datetime.strptime(data_str, fmt)
                 if hora_str and ':' in hora_str:
-                    h, m = map(int, hora_str.split(':')[:2])
+                    h, m = map(int, re.split(r'[^\d]', hora_str)[:2])
                     data = data.replace(hour=h, minute=m)
                 return data.replace(tzinfo=zoneinfo.ZoneInfo(timezone))
             except:
@@ -95,14 +95,14 @@ def is_torneio_postavel(data_str, hora_str=None, timezone='UTC'):
     if not horario:
         return False
     diff_min = (horario - agora).total_seconds() / 60
-    return diff_min > 0 and diff_min <= 1440  # Dentro 24h, não iniciado
+    return diff_min > 0 and diff_min <= 1440  # 24h, não iniciado
 
-# Parser PokerListings (ajustado pra dados reais)
+# Parser PokerListings (fix: pega relative times e tds genéricos)
 def parse_pokerlistings(soup):
     eventos = []
     tables = soup.find_all('table')
     for table in tables:
-        rows = table.find_all('tr')[:30]  # Top 30
+        rows = table.find_all('tr')[:30]
         for row in rows:
             tds = row.find_all('td')
             if len(tds) >= 5:
@@ -116,15 +116,16 @@ def parse_pokerlistings(soup):
                 if is_torneio_postavel('hoje', time_str):
                     eventos.append({'sala': site_name, 'senha': senha, 'data': 'hoje', 'hora': time_str, 'prize': prize, 'name': name})
                     print(f"  - {name} on {site_name}: {time_str}, {prize}, {senha}")  # Debug
+    print(f"PokerListings: {len(eventos)} encontrados")
     return eventos
 
-# Seus parsers (mantidos, com no PW)
+# Outros parsers (mantidos, com no PW fix)
 def parse_thenuts(soup):
     eventos = []
     texto = soup.get_text().lower()
     for sala in SITE_MAP:
         if sala in texto:
-            senha_match = re.search(rf'{sala}.*?password[:\s]*([A-Z0-9]{{4,}}|none)', texto, re.IGNORECASE | re.DOTALL)
+            senha_match = re.search(rf'{sala}.*?password[:\s]*([A-Z0-9]{{4,}}|no password)', texto, re.IGNORECASE | re.DOTALL)
             senha = senha_match.group(1) if senha_match else 'No password required'
             time_match = re.search(rf'{sala}.*?time et[:\s]*(\d{{1,2}}:\d{{2}}\s*(am|pm)?)', texto, re.IGNORECASE | re.DOTALL)
             if time_match and is_torneio_postavel('hoje', time_match.group(1), 'US/Eastern'):
@@ -145,7 +146,7 @@ def parse_freerollpass(soup):
                 hora = cols[1].get_text(strip=True)
                 senha_col = cols[2].get_text(strip=True).lower()
                 senha = re.search(r'([A-Z0-9]{4,})', senha_col)
-                senha = senha.group(1) if senha else 'No password required'  # Fix: no PW
+                senha = senha.group(1) if senha else 'No password required'
                 horario_disp = re.search(r'(disponível|available).*?(\d{1,2}:\d{2})', senha_col, re.IGNORECASE)
                 if is_torneio_postavel('hoje', hora):
                     eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje', 'hora': hora})
@@ -158,7 +159,7 @@ def parse_raketherake(soup):
     texto = soup.get_text().lower()
     for sala in SITE_MAP:
         if sala in texto:
-            senha_match = re.search(rf'{sala}.*?password[:\s]*([A-Z0-9]{{4,10}}|none)', texto, re.IGNORECASE | re.DOTALL)
+            senha_match = re.search(rf'{sala}.*?password[:\s]*([A-Z0-9]{{4,10}}|no password)', texto, re.IGNORECASE | re.DOTALL)
             senha = senha_match.group(1) if senha_match else 'No password required'
             horario_match = re.search(rf'{sala}.*?(password available|senha disponível).*?(\d{{1,2}}:\d{{2}})', texto, re.IGNORECASE | re.DOTALL)
             if is_torneio_postavel('hoje', ''):
@@ -172,7 +173,7 @@ def parse_generic(soup, url):
     texto = soup.get_text().lower()
     for sala in SITE_MAP:
         if sala in texto:
-            padroes_senha = re.findall(r'(?:password|senha|pw)[:\s]*([A-Z0-9]{4,10}|none)', texto, re.IGNORECASE)
+            padroes_senha = re.findall(r'(?:password|senha|pw)[:\s]*([A-Z0-9]{4,10}|no password)', texto, re.IGNORECASE)
             senha = padroes_senha[0] if padroes_senha else 'No password required'
             padroes_tempo = re.findall(r'(\d{2}:\d{2}\s*(CET|ET)?|(\d+)\s*(minutes?|hours?)\s*to start)', texto)
             for tempo in padroes_tempo:
@@ -190,7 +191,6 @@ def buscar_senhas():
             soup = BeautifulSoup(resp.text, 'html.parser')
             if 'pokerlistings' in url:
                 eventos.extend(parse_pokerlistings(soup))
-                print(f"PokerListings: {len(eventos)} encontrados até agora")
             elif 'thenuts' in url:
                 eventos.extend(parse_thenuts(soup))
             elif 'freerollpass' in url:
@@ -207,13 +207,13 @@ def buscar_senhas():
                 agendamentos.extend(ags)
         except Exception as e:
             print(f"Erro em {url}: {e}")
-    # Dedup e filtro
+    # Dedup
     seen = set()
     unique = [ev for ev in eventos if (ev['senha'], ev['sala']) not in seen and is_torneio_postavel(ev.get('data', 'hoje'), ev.get('hora', '')) and seen.add((ev['senha'], ev['sala']))]
     print(f"Total unique em 24h: {len(unique)}")
     return unique[:5], agendamentos
 
-# Seu buscar_senha_agendada (4 min)
+# Seu buscar_senha_agendada
 def buscar_senha_agendada(url, sala):
     for tentativa in range(2):
         try:
@@ -262,7 +262,7 @@ def gerar_post(eventos):
     msg += f"\n\n{LINK_FIXO}" if random.random() > 0.5 else "\n\nLink in bio! 📍"
     return msg[:280]
 
-# Limites (seu /tmp)
+# Limites /tmp
 def load_state():
     try:
         with open('/tmp/bot_state.json', 'r') as f:
