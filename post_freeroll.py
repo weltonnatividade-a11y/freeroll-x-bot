@@ -32,7 +32,7 @@ SITES = [
     "https://pokerfreerollpasswords.com/#freerolls-today"
 ]
 
-# Salas e afiliados
+# Salas e afiliados (links completos)
 SITE_MAP = {
     'coinpoker': {'lang': 'pt', 'link': 'https://record.coinpokeraffiliates.com/_zcOgBAtPAXHUOsjNOfgKeWNd7ZgqdRLk/1/'},
     '888poker': {'lang': 'pt', 'link': 'https://ic.aff-handler.com/c/48566?sr=1068421'},
@@ -41,4 +41,4 @@ SITE_MAP = {
     'wpt': {'lang': 'pt', 'link': 'https://tracking.wptpartners.com/visit/?bta=838&nci=5373&utm_campaign=wptpok1030'},
     'betsson': {'lang': 'pt', 'link': ''},
     'pokerstars': {'lang': 'en', 'link': ''},
-    'americas cardroom': {'lang': 'en', 'link': 'https://
+    'americas cardroom': {'lang': 'en', 'link': 'https://record.secure.acraffiliates.com/_X7ahir
