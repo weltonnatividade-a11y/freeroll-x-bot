@@ -2,7 +2,8 @@ name: Post Freeroll Diário
 
 on:
   schedule:
-    - cron: '0 9 * * *'  # Todo dia às 9h UTC
+  cron: '*/30 * * * *'
+  # Todo dia às 9h UTC
   workflow_dispatch:  # Permite rodar manualmente
 
 jobs:
