@@ -26,10 +26,15 @@ try:
 except Exception as e:
     print(f"Erro ao inicializar tweepy.Client: {e}")
 
-# Sites
+# Cabeçalhos para evitar 403
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+}
+
+# Sites (removido freerollpass.com, adicionado CardsChat)
 SITES = [
     "https://www.pokerlistings.com/free-rolls",
-    "https://freerollpass.com/pt",  # Nota: este site está fora do ar (404)
+    "https://www.cardschat.com/poker-freerolls.php",  # Novo site
     "https://www.thenuts.com/freerolls/",
     "https://freerollpasswords.com/",
     "https://www.raketherake.com/poker/freerolls",
@@ -69,10 +74,9 @@ TEMPLATES_PT = [
 
 LINK_FIXO = "https://linkr.bio/pokersenha"
 
-# Função para parsear data e horário do torneio (corrigida)
+# Função para parsear data e horário do torneio
 def parse_horario_torneio(data_str, hora_str=None, timezone_str="UTC"):
     try:
-        # Normaliza a string de data
         data_str = data_str.strip()
         if hora_str:
             hora_str = hora_str.strip()
@@ -103,11 +107,8 @@ def parse_horario_torneio(data_str, hora_str=None, timezone_str="UTC"):
         if not dt:
             raise ValueError(f"Formato de data/hora inválido: {data_hora_str}")
         
-        # Aplica o fuso horário
         timezone = zoneinfo.ZoneInfo(timezone_str)
         dt = dt.replace(tzinfo=timezone)
-        
-        # Converte para UTC
         dt_utc = dt.astimezone(zoneinfo.ZoneInfo("UTC"))
         return dt_utc
     except Exception as e:
@@ -119,12 +120,17 @@ def obter_freerolls():
     freerolls = []
     for site in SITES:
         try:
-            response = requests.get(site, timeout=10)
+            response = requests.get(site, headers=HEADERS, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
             
-            # Ajuste os seletores conforme a estrutura de cada site
-            torneios = soup.find_all("tr", class_=["freeroll-row", "tournament-row", "event-row"]) or soup.find_all("div", class_=["freeroll", "tournament"])
+            # Ajuste os seletores para cada site
+            if "cardschat.com" in site:
+                torneios = soup.find_all("tr", class_="freeroll-row") or soup.find_all("div", class_="freeroll-item")
+            elif "pokerfreerollpasswords.com" in site:
+                torneios = soup.find_all("div", class_="tournament-item") or soup.find_all("article")
+            else:
+                torneios = soup.find_all("tr", class_=["freeroll-row", "tournament-row", "event-row"]) or soup.find_all("div", class_=["freeroll", "tournament"])
             
             for torneio in torneios:
                 try:
@@ -192,6 +198,8 @@ def postar_freerolls():
         try:
             client.create_tweet(text=texto)
             print(f"Postado: {texto}")
+            with open("posts_log.txt", "a") as f:
+                f.write(f"{datetime.now(zoneinfo.ZoneInfo('UTC'))}: {texto}\n")
             posted += 1
             time.sleep(7200)  # Intervalo de 2 horas entre posts
         except Exception as e:
