@@ -46,21 +46,21 @@ SITE_MAP = {
     'betonline': {'lang': 'pt', 'link': 'https://record.betonlineaffiliates.ag/_uPhqzdPJjdaIPOZC7y3OxGNd7ZgqdRLk/1/'},
 }
 
-# Templates EN/PT
+# Templates EN/PT (strings limpas, sem aspas soltas)
 TEMPLATES_EN = [
-    "🚀 Upcoming freeroll on {sala}! PW: {senhas}. Starts soon – win real prizes free! ♠️ {link}",
+    "🚀 Upcoming freeroll on {sala}! PW: {senhas}. Starts soon - win real prizes free! ♠️ {link}",
     "Alert! Freeroll on {sala} incoming. Use: {senhas} & build your bankroll. Ready? #PokerFreeroll",
     "Next freeroll on {sala}: exclusive PWs {senhas}. Rush to the tourney! {link}",
     "Hey poker fans! Freeroll on {sala} with PWs: {senhas}. No cost, pure skill! 💰",
-    "Freeroll alert on {sala}: {senhas} – Hot event with prizes. #PokerFreeroll {link}"
+    "Freeroll alert on {sala}: {senhas} - Hot event with prizes. #PokerFreeroll {link}"
 ]
 
 TEMPLATES_PT = [
-    "🚀 Freeroll futuro na {sala}! Senha: {senhas}. Início em breve – ganhe prêmios reais grátis! ♠️ {link}",
+    "🚀 Freeroll futuro na {sala}! Senha: {senhas}. Início em breve - ganhe prêmios reais grátis! ♠️ {link}",
     "Alerta! Freeroll na {sala} rolando logo. Use: {senhas} e monte seu bankroll. Topa o desafio? #PokerGratis",
     "Próximo freeroll na {sala}: senhas exclusivas {senhas}. Corre pro torneio e dispute! {link}",
     "Ei, poker lovers! Freeroll na {sala} com senhas: {senhas}. Sem custo, só skill! 💰",
-    "Freeroll alert na {sala}: {senhas} – Evento futuro bombando prêmios. #PokerFreeroll {link}"
+    "Freeroll alert na {sala}: {senhas} - Evento futuro bombando prêmios. #PokerFreeroll {link}"
 ]
 
 LINK_FIXO = "https://linkr.bio/pokersenha"
@@ -169,10 +169,4 @@ def parse_raketherake(soup):
         if sala in texto:
             senha_match = re.search(rf'{sala}.*?password[:\s]*([A-Z0-9]{{4,10}}|no password)', texto, re.IGNORECASE | re.DOTALL)
             senha = senha_match.group(1) if senha_match else 'No password required'
-            horario_match = re.search(rf'{sala}.*?(password available|senha disponível).*?(\d{{1,2}}:\d{{2}})', texto, re.IGNORECASE | re.DOTALL)
-            if is_torneio_postavel('hoje', ''):
-                eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje'})
-            elif horario_match:
-                agendamentos.append({'sala': sala, 'horario_senha': horario_match.group(2), 'url': 'https://www.raketherake.com/poker/freerolls'})
-    print(f"RakeTheRake: {len(eventos)} encontrados")
-    return eventos, agend
+            horario_match = re.search(rf
