@@ -68,12 +68,13 @@ LINK_FIXO = "https://linkr.bio/pokersenha"
 def parse_horario_torneio(data_str, hora_str=None, timezone='UTC'):
     agora = datetime.now(zoneinfo.ZoneInfo(timezone))
     if hora_str and 'to start' in hora_str.lower():
-        # Relative time
-        mins_match = re.search(r'(\d+)\s*(minutes?|hours?)(?:\s+(\d+)\s*minutes?)?', hora_str.lower())
-        if mins_match:
-            hours = int(mins_match.group(1)) if 'hour' in mins_match.group(2) else 0
-            mins = int(mins_match.group(3)) if mins_match.group(3) else int(mins_match.group(1))
-            return agora + timedelta(hours=hours, minutes=mins)
+        # Relative: "19 minutes to start" or "1 hour 19 minutes to start"
+        time_lower = hora_str.lower()
+        hours_match = re.search(r'(\d+)\s*hour', time_lower)
+        mins_match = re.search(r'(\d+)\s*minute', time_lower)
+        hours = int(hours_match.group(1)) if hours_match else 0
+        mins = int(mins_match.group(1)) if mins_match else 0
+        return agora + timedelta(hours=hours, minutes=mins)
     # Absolute fallback
     try:
         for fmt in ['%m/%d/%Y', '%d/%m/%Y', '%Y-%m-%d']:
@@ -97,18 +98,20 @@ def is_torneio_postavel(data_str, hora_str=None, timezone='UTC'):
     diff_min = (horario - agora).total_seconds() / 60
     return diff_min > 0 and diff_min <= 1440  # 24h, não iniciado
 
-# Parser PokerListings (fix: pega relative times e tds genéricos)
+# Parser PokerListings (fix: pega table genérica, relative times, — as no PW)
 def parse_pokerlistings(soup):
     eventos = []
-    tables = soup.find_all('table')
-    for table in tables:
-        rows = table.find_all('tr')[:30]
+    table = soup.find('table')  # A table principal
+    if table:
+        rows = table.find_all('tr')[1:][:30]  # Skip header, top 30
         for row in rows:
             tds = row.find_all('td')
             if len(tds) >= 5:
-                full_site = tds[0].get_text(strip=True).lower()
-                site_name = next((k for k in SITE_MAP if k in full_site), full_site.split('\n')[0].replace('poker', '').strip())
+                full_site = tds[0].get_text(strip=True)
+                site_name = next((k for k in SITE_MAP if k in full_site.lower()), full_site.split('\n')[0].lower().replace('poker', '').strip())
                 time_str = tds[1].get_text(strip=True)
+                if 'to start' not in time_str.lower():
+                    continue  # Só relative pra 24h
                 name = full_site.split('\n', 1)[1].strip() if '\n' in full_site else 'Freeroll'
                 prize = tds[4].get_text(strip=True)
                 pw_text = tds[3].get_text(strip=True).strip()
@@ -119,7 +122,7 @@ def parse_pokerlistings(soup):
     print(f"PokerListings: {len(eventos)} encontrados")
     return eventos
 
-# Outros parsers (mantidos, com no PW fix)
+# Outros parsers (mantidos, com fix no PW)
 def parse_thenuts(soup):
     eventos = []
     texto = soup.get_text().lower()
