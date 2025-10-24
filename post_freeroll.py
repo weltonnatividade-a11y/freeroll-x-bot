@@ -46,9 +46,9 @@ SITE_MAP = {
     'betonline': {'lang': 'pt', 'link': 'https://record.betonlineaffiliates.ag/_uPhqzdPJjdaIPOZC7y3OxGNd7ZgqdRLk/1/'},
 }
 
-# Templates EN/PT (strings limpas, sem aspas soltas)
+# Templates EN/PT (limpos)
 TEMPLATES_EN = [
-    "🚀 Upcoming freeroll on {sala}! PW: {senhas}. Starts soon - win real prizes free! ♠️ {link}",
+    "Upcoming freeroll on {sala}! PW: {senhas}. Starts soon - win real prizes free! ♠️ {link}",
     "Alert! Freeroll on {sala} incoming. Use: {senhas} & build your bankroll. Ready? #PokerFreeroll",
     "Next freeroll on {sala}: exclusive PWs {senhas}. Rush to the tourney! {link}",
     "Hey poker fans! Freeroll on {sala} with PWs: {senhas}. No cost, pure skill! 💰",
@@ -56,7 +56,7 @@ TEMPLATES_EN = [
 ]
 
 TEMPLATES_PT = [
-    "🚀 Freeroll futuro na {sala}! Senha: {senhas}. Início em breve - ganhe prêmios reais grátis! ♠️ {link}",
+    "Freeroll futuro na {sala}! Senha: {senhas}. Início em breve - ganhe prêmios reais grátis! ♠️ {link}",
     "Alerta! Freeroll na {sala} rolando logo. Use: {senhas} e monte seu bankroll. Topa o desafio? #PokerGratis",
     "Próximo freeroll na {sala}: senhas exclusivas {senhas}. Corre pro torneio e dispute! {link}",
     "Ei, poker lovers! Freeroll na {sala} com senhas: {senhas}. Sem custo, só skill! 💰",
@@ -85,88 +85,4 @@ def parse_horario_torneio(data_str, hora_str=None, timezone='UTC'):
                 return data.replace(tzinfo=zoneinfo.ZoneInfo(timezone))
             except:
                 continue
-    except:
-        pass
-    return None
-
-def is_torneio_postavel(data_str, hora_str=None, timezone='UTC'):
-    agora = datetime.now(zoneinfo.ZoneInfo(timezone))
-    horario = parse_horario_torneio(data_str, hora_str, timezone)
-    if not horario:
-        return False
-    diff_min = (horario - agora).total_seconds() / 60
-    return diff_min > 0 and diff_min <= 1440  # 24h, não iniciado
-
-def parse_pokerlistings(soup):
-    eventos = []
-    table = soup.find('table')
-    if table:
-        rows = table.find_all('tr')[1:][:30]  # Skip header
-        for row in rows:
-            tds = row.find_all('td')
-            if len(tds) >= 5:
-                full_brand = tds[0].get_text(strip=True)
-                # Split: "1 hour 7 minutes to start | 888poker<br>Mystery Bounty 33 - Freebuy"
-                parts = full_brand.split('|')
-                if len(parts) >= 2:
-                    time_str = parts[0].strip()
-                    site_part = parts[1].strip()
-                    site_name = next((k for k in SITE_MAP if k in site_part.lower()), site_part.split('<br>')[0].lower().replace('poker', '').strip())
-                    name = site_part.split('<br>')[1].strip() if '<br>' in site_part else 'Freeroll'
-                else:
-                    time_str = tds[1].get_text(strip=True)
-                    site_name = next((k for k in SITE_MAP if k in full_brand.lower()), full_brand.lower().replace('poker', '').strip())
-                    name = 'Freeroll'
-                prize = tds[4].get_text(strip=True).replace('prize: ', '').strip()
-                pw_text = tds[3].get_text(strip=True).strip()
-                senha = pw_text if pw_text and pw_text not in ['—', 'none', ''] else 'No password required'
-                if 'to start' in time_str.lower() and is_torneio_postavel('hoje', time_str):
-                    eventos.append({'sala': site_name, 'senha': senha, 'data': 'hoje', 'hora': time_str, 'prize': prize, 'name': name})
-                    print(f"  - {name} on {site_name}: {time_str}, {prize}, {senha}")
-    print(f"PokerListings: {len(eventos)} encontrados")
-    return eventos
-
-def parse_thenuts(soup):
-    eventos = []
-    texto = soup.get_text().lower()
-    for sala in SITE_MAP:
-        if sala in texto:
-            senha_match = re.search(rf'{sala}.*?password[:\s]*([A-Z0-9]{{4,}}|no password)', texto, re.IGNORECASE | re.DOTALL)
-            senha = senha_match.group(1) if senha_match else 'No password required'
-            time_match = re.search(rf'{sala}.*?time et[:\s]*(\d{{1,2}}:\d{{2}}\s*(am|pm)?)', texto, re.IGNORECASE | re.DOTALL)
-            if time_match and is_torneio_postavel('hoje', time_match.group(1), 'US/Eastern'):
-                eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje', 'hora': time_match.group(1)})
-    print(f"Thenuts: {len(eventos)} encontrados")
-    return eventos
-
-def parse_freerollpass(soup):
-    eventos, agendamentos = [], []
-    tabelas = soup.find_all('table')
-    for tabela in tabelas:
-        rows = tabela.find_all('tr')[1:]
-        for row in rows:
-            cols = row.find_all(['td', 'th'])
-            if len(cols) >= 3:
-                sala = cols[0].get_text(strip=True).lower()
-                if not any(k in sala for k in SITE_MAP):
-                    continue
-                hora = cols[1].get_text(strip=True)
-                senha_col = cols[2].get_text(strip=True).lower()
-                senha = re.search(r'([A-Z0-9]{4,})', senha_col)
-                senha = senha.group(1) if senha else 'No password required'
-                horario_disp = re.search(r'(disponível|available).*?(\d{1,2}:\d{2})', senha_col, re.IGNORECASE)
-                if is_torneio_postavel('hoje', hora):
-                    eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje', 'hora': hora})
-                elif horario_disp and is_torneio_postavel('hoje', hora):
-                    agendamentos.append({'sala': sala, 'horario_senha': horario_disp.group(2), 'data_torneio': 'hoje', 'hora_torneio': hora, 'url': 'https://freerollpass.com/pt'})
-    print(f"FreerollPass: {len(eventos)} encontrados")
-    return eventos, agendamentos
-
-def parse_raketherake(soup):
-    eventos, agendamentos = [], []
-    texto = soup.get_text().lower()
-    for sala in SITE_MAP:
-        if sala in texto:
-            senha_match = re.search(rf'{sala}.*?password[:\s]*([A-Z0-9]{{4,10}}|no password)', texto, re.IGNORECASE | re.DOTALL)
-            senha = senha_match.group(1) if senha_match else 'No password required'
-            horario_match = re.search(rf
+    except
