@@ -8,9 +8,6 @@ import re
 from datetime import datetime, timedelta
 import zoneinfo
 import json
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
 
 # Chaves do X (secrets: TWITTER_API_KEY etc.)
 api_key = os.getenv('TWITTER_API_KEY')
@@ -29,7 +26,7 @@ try:
 except Exception as e:
     print(f"Erro ao inicializar tweepy.Client: {e}")
 
-# Cabeçalhos para requisições com requests
+# Cabeçalhos para evitar 403
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -127,44 +124,17 @@ def parse_horario_torneio(data_str, hora_str=None, timezone_str="UTC"):
 def limpar_url(url):
     return url.strip().rstrip(":/")
 
-# Função para obter HTML com requests ou Selenium
-def obter_html(site):
-    site = limpar_url(site)
-    print(f"Tentando acessar: {site}")
-    
-    # Tenta com requests primeiro
-    try:
-        response = requests.get(site, headers=HEADERS, timeout=10)
-        response.raise_for_status()
-        return BeautifulSoup(response.text, "html.parser")
-    except Exception as e:
-        print(f"Erro com requests em {site}: {e}")
-        
-        # Tenta com Selenium
-        try:
-            options = Options()
-            options.add_argument("--headless")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            driver = webdriver.Chrome(options=options)
-            driver.get(site)
-            time.sleep(2)  # Aguarda carregamento
-            soup = BeautifulSoup(driver.page_source, "html.parser")
-            driver.quit()
-            return soup
-        except Exception as e:
-            print(f"Erro com Selenium em {site}: {e}")
-            return None
-
 # Função para obter freerolls
 def obter_freerolls():
     freerolls = []
     for site in SITES:
-        soup = obter_html(site)
-        if not soup:
-            continue
-        
+        site = limpar_url(site)
+        print(f"Tentando acessar: {site}")
         try:
+            response = requests.get(site, headers=HEADERS, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+            
             # Ajuste os seletores para cada site
             if "pokerfreerollpasswords.com" in site:
                 torneios = soup.find_all("div", class_="freeroll-tournament")
@@ -214,7 +184,7 @@ def obter_freerolls():
                     print(f"Erro ao processar torneio em {site}: {e}")
                     continue
         except Exception as e:
-            print(f"Erro ao processar {site}: {e}")
+            print(f"Erro ao acessar {site}: {e}")
             continue
     return freerolls
 
@@ -251,6 +221,6 @@ def postar_freerolls():
             print(f"Erro ao postar: {e}")
             continue
 
-# Executors
+# Executa o bot
 if __name__ == "__main__":
     postar_freerolls()
