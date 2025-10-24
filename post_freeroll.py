@@ -33,7 +33,7 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.5"
 }
 
-# Sites
+# Sites (substituído pokernews.com/poker-freerolls por URL válido)
 SITES = [
     "https://www.pokerlistings.com/free-rolls",
     "https://www.thenuts.com/freerolls",
@@ -41,7 +41,7 @@ SITES = [
     "https://www.raketherake.com/poker/freerolls",
     "https://pokerfreerollpasswords.com",
     "https://www.888poker.com/poker-promotions/freerolls",
-    "https://www.pokernews.com/poker-freerolls"
+    "https://www.pokernews.com/poker/freerolls"
 ]
 
 # Salas e afiliados (URLs completas)
@@ -137,11 +137,11 @@ def obter_freerolls():
             
             # Ajuste os seletores para cada site
             if "pokerfreerollpasswords.com" in site:
-                torneios = soup.find_all("div", class_="freeroll-tournament")
+                torneios = soup.find_all("div", class_="tournament-block")
             elif "888poker.com" in site:
-                torneios = soup.find_all("div", class_="tournament-card")
+                torneios = soup.find_all("div", class_="promotion-card")
             elif "pokernews.com" in site:
-                torneios = soup.find_all("tr", class_="freeroll")
+                torneios = soup.find_all("tr", class_="freeroll-row")
             else:
                 torneios = soup.find_all("tr", class_=["freeroll-row", "tournament-row", "event-row"]) or soup.find_all("div", class_=["freeroll", "tournament"])
             
