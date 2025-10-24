@@ -78,7 +78,6 @@ def parse_horario_torneio(data_str, hora_str=None, timezone='UTC'):
         hours = int(hours_match.group(1)) if hours_match else 0
         mins = int(mins_match.group(1)) if mins_match else 0
         return agora + timedelta(hours=hours, minutes=mins)
-    # Absolute fallback
     try:
         for fmt in ['%m/%d/%Y', '%d/%m/%Y', '%Y-%m-%d']:
             try:
@@ -91,44 +90,48 @@ def parse_horario_torneio(data_str, hora_str=None, timezone='UTC'):
                 continue
     except:
         pass
+    print(f"Não foi possível parsear horário: data={data_str}, hora={hora_str}")
     return None
 
 def is_torneio_postavel(data_str, hora_str=None, timezone='UTC'):
     agora = datetime.now(zoneinfo.ZoneInfo(timezone))
     horario = parse_horario_torneio(data_str, hora_str, timezone)
     if not horario:
+        print(f"Torneio descartado: horário inválido (data={data_str}, hora={hora_str})")
         return False
     diff_min = (horario - agora).total_seconds() / 60
-    return diff_min > 0 and diff_min <= 1440  # 24h, não iniciado
+    is_valid = diff_min > 0 and diff_min <= 2880  # 48h, não iniciado
+    print(f"Torneio {'válido' if is_valid else 'inválido'}: diff_min={diff_min}, data={data_str}, hora={hora_str}")
+    return is_valid
 
 def parse_pokerlistings(soup):
     eventos = []
     table = soup.find('table')
-    if table:
-        rows = table.find_all('tr')[1:][:30]  # Skip header
-        for row in rows:
-            tds = row.find_all('td')
-            if len(tds) >= 4:  # Fix: >=4, pois prize é tds[3]
-                full_brand = tds[0].get_text(strip=True)
-                # Split por | pra time e brand
-                parts = full_brand.split('|')
-                if len(parts) >= 2:
-                    time_str = parts[0].strip()
-                    site_part = parts[1].strip()
-                    # Split por <br> pra site e name
-                    site_lines = site_part.split('<br>')
-                    site_name = site_lines[0].lower().replace('poker', '').strip()
-                    name = site_lines[1].strip() if len(site_lines) > 1 else 'Freeroll'
-                else:
-                    time_str = tds[1].get_text(strip=True)
-                    site_name = full_brand.lower().replace('poker', '').strip()
-                    name = 'Freeroll'
-                prize = tds[3].get_text(strip=True).replace('prize: ', '').strip()  # Fix: tds[3] prize
-                pw_text = tds[2].get_text(strip=True).strip()  # Fix: tds[2] password
-                senha = pw_text if pw_text and pw_text not in ['—', 'none', ''] else 'No password required'
-                if 'to start' in time_str.lower() and is_torneio_postavel('hoje', time_str):
-                    eventos.append({'sala': site_name, 'senha': senha, 'data': 'hoje', 'hora': time_str, 'prize': prize, 'name': name})
-                    print(f"  - {name} on {site_name}: {time_str}, {prize}, {senha}")
+    if not table:
+        print("Nenhuma tabela encontrada em PokerListings")
+        return eventos
+    rows = table.find_all('tr')[1:][:30]  # Skip header
+    for row in rows:
+        tds = row.find_all('td')
+        if len(tds) >= 4:
+            full_brand = tds[0].get_text(strip=True)
+            parts = full_brand.split('|')
+            if len(parts) >= 2:
+                time_str = parts[0].strip()
+                site_part = parts[1].strip()
+                site_lines = site_part.split('<br>')
+                site_name = site_lines[0].lower().replace('poker', '').strip()
+                name = site_lines[1].strip() if len(site_lines) > 1 else 'Freeroll'
+            else:
+                time_str = tds[1].get_text(strip=True)
+                site_name = full_brand.lower().replace('poker', '').strip()
+                name = 'Freeroll'
+            prize = tds[3].get_text(strip=True).replace('prize: ', '').strip()
+            pw_text = tds[2].get_text(strip=True).strip()
+            senha = pw_text if pw_text and pw_text not in ['—', 'none', ''] else 'No password required'
+            if 'to start' in time_str.lower() and is_torneio_postavel('hoje', time_str):
+                eventos.append({'sala': site_name, 'senha': senha, 'data': 'hoje', 'hora': time_str, 'prize': prize, 'name': name})
+                print(f"  - {name} on {site_name}: {time_str}, {prize}, {senha}")
     print(f"PokerListings: {len(eventos)} encontrados")
     return eventos
 
@@ -142,30 +145,37 @@ def parse_thenuts(soup):
             time_match = re.search(r'{sala}.*?time et[:\s]*(\d{{1,2}}:\d{{2}}\s*(am|pm)?)'.format(sala=sala), texto, re.IGNORECASE | re.DOTALL)
             if time_match and is_torneio_postavel('hoje', time_match.group(1), 'US/Eastern'):
                 eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje', 'hora': time_match.group(1)})
+                print(f"  - Freeroll on {sala}: {time_match.group(1)}, {senha}")
     print(f"Thenuts: {len(eventos)} encontrados")
     return eventos
 
 def parse_freerollpass(soup):
     eventos, agendamentos = [], []
     tabelas = soup.find_all('table')
+    if not tabelas:
+        print("Nenhuma tabela encontrada em FreerollPass")
+        return eventos, agendamentos
     for tabela in tabelas:
         rows = tabela.find_all('tr')[1:]
         for row in rows:
             cols = row.find_all(['td', 'th'])
             if len(cols) >= 3:
                 sala = cols[0].get_text(strip=True).lower()
-                if not any(k in sala for k in SITE_MAP):
+                sala_normalized = sala.replace('poker', '').strip()
+                if not any(k in sala_normalized for k in SITE_MAP):
                     continue
                 hora = cols[1].get_text(strip=True)
                 senha_col = cols[2].get_text(strip=True).lower()
-                senha = re.search(r'([A-Z0-9]{4,})', senha_col)
+                senha = re.search(r'([A-Z0-9]{4,})', senha_col) or re.search(r'(no password|sem senha)', senha_col, re.IGNORECASE)
                 senha = senha.group(1) if senha else 'No password required'
                 horario_disp = re.search(r'(disponível|available).*?(\d{1,2}:\d{2})', senha_col, re.IGNORECASE)
                 if is_torneio_postavel('hoje', hora):
-                    eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje', 'hora': hora})
-                elif horario_disp and is_torneio_postavel('hoje', hora):
-                    agendamentos.append({'sala': sala, 'horario_senha': horario_disp.group(2), 'data_torneio': 'hoje', 'hora_torneio': hora, 'url': 'https://freerollpass.com/pt'})
-    print(f"FreerollPass: {len(eventos)} encontrados")
+                    eventos.append({'sala': sala_normalized, 'senha': senha, 'data': 'hoje', 'hora': hora})
+                    print(f"  - Freeroll on {sala_normalized}: {hora}, {senha}")
+                elif horario_disp:
+                    agendamentos.append({'sala': sala_normalized, 'horario_senha': horario_disp.group(2), 'data_torneio': 'hoje', 'hora_torneio': hora, 'url': 'https://freerollpass.com/pt'})
+                    print(f"  - Agendamento para {sala_normalized}: senha às {horario_disp.group(2)}")
+    print(f"FreerollPass: {len(eventos)} encontrados, {len(agendamentos)} agendamentos")
     return eventos, agendamentos
 
 def parse_raketherake(soup):
@@ -176,11 +186,14 @@ def parse_raketherake(soup):
             senha_match = re.search(r'{sala}.*?password[:\s]*([A-Z0-9]{{4,10}}|no password)'.format(sala=sala), texto, re.IGNORECASE | re.DOTALL)
             senha = senha_match.group(1) if senha_match else 'No password required'
             horario_match = re.search(r'{sala}.*?(password available|senha disponível).*?(\d{{1,2}}:\d{{2}})', texto, re.IGNORECASE | re.DOTALL)
-            if is_torneio_postavel('hoje', ''):
-                eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje'})
+            time_match = re.search(r'{sala}.*?(\d{{1,2}}:\d{{2}}\s*(am|pm)?)', texto, re.IGNORECASE | re.DOTALL)
+            if time_match and is_torneio_postavel('hoje', time_match.group(1)):
+                eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje', 'hora': time_match.group(1)})
+                print(f"  - Freeroll on {sala}: {time_match.group(1)}, {senha}")
             elif horario_match:
                 agendamentos.append({'sala': sala, 'horario_senha': horario_match.group(2), 'url': 'https://www.raketherake.com/poker/freerolls'})
-    print(f"RakeTheRake: {len(eventos)} encontrados")
+                print(f"  - Agendamento para {sala}: senha às {horario_match.group(2)}")
+    print(f"RakeTheRake: {len(eventos)} encontrados, {len(agendamentos)} agendamentos")
     return eventos, agendamentos
 
 def parse_generic(soup, url):
@@ -188,13 +201,14 @@ def parse_generic(soup, url):
     texto = soup.get_text().lower()
     for sala in SITE_MAP:
         if sala in texto:
-            padroes_senha = re.findall(r'(?:password|senha|pw)[:\s]*([A-Z0-9]{4,10}|no password)', texto, re.IGNORECASE)
+            padroes_senha = re.findall(r'(?:password|senha|pw)[:\s]*([A-Z0-9]{4,10}|no password|sem senha)', texto, re.IGNORECASE)
             senha = padroes_senha[0] if padroes_senha else 'No password required'
-            padroes_tempo = re.findall(r'(\d{2}:\d{2}\s*(CET|ET)?|(\d+)\s*(minutes?|hours?)\s*to start)', texto)
+            padroes_tempo = re.findall(r'(\d{2}:\d{2}\s*(CET|ET|UTC)?|(\d+)\s*(minutes?|hours?)\s*to start)', texto, re.IGNORECASE)
             for tempo in padroes_tempo:
                 hora_str = tempo[0] if tempo[0] else f"{tempo[2]} {tempo[3]} to start"
                 if is_torneio_postavel('hoje', hora_str):
                     eventos.append({'sala': sala, 'senha': senha, 'data': 'hoje', 'hora': hora_str})
+                    print(f"  - Freeroll on {sala}: {hora_str}, {senha}")
                     break
     print(f"Generic ({url.split('/')[-2]}): {len(eventos)} encontrados")
     return eventos, agend
@@ -206,7 +220,7 @@ def buscar_senha_agendada(url, sala):
             resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
             soup = BeautifulSoup(resp.text, 'html.parser')
             texto = soup.get_text().lower()
-            senha_match = re.search(r'(?:password|senha|pw)[:\s]*([A-Z0-9]{4,10}|no password)', texto, re.IGNORECASE)
+            senha_match = re.search(r'(?:password|senha|pw)[:\s]*([A-Z0-9]{4,10}|no password|sem senha)', texto, re.IGNORECASE)
             senha = senha_match.group(1) if senha_match else 'No password required'
             if senha:
                 print(f"Senha encontrada para {sala}: {senha}")
@@ -222,6 +236,7 @@ def buscar_senhas():
     eventos, agendamentos = [], []
     for url in SITES:
         try:
+            print(f"Buscando em {url}")
             resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
             soup = BeautifulSoup(resp.text, 'html.parser')
             if 'pokerlistings' in url:
