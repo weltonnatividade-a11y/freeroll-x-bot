@@ -295,6 +295,10 @@ def criar_texto_post(freeroll):
 # Função para postar freeroll
 def post_freeroll(freeroll):
     texto = criar_texto_post(freeroll)
+    dry_run = os.getenv('DRY_RUN', 'false').lower() == 'true'
+    if dry_run:
+        print(f"[DRY RUN] Post simulado: {texto}")
+        return
     try:
         client.create_tweet(text=texto)
         print(f"Postado: {texto}")
@@ -319,6 +323,7 @@ def main():
     if not freerolls:
         print("Nenhum freeroll encontrado.")
         return
+    print(f"Encontrados {len(freerolls)} freerolls únicos.")
     schedule_posts(freerolls)
     while True:
         schedule.run_pending()
