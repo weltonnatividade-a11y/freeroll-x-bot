@@ -16,7 +16,7 @@ jobs:
       with:
         python-version: '3.12'
     
-    - name: Install dependencies
+    - name: pip install requests beautifulsoup4 tweepy zoneinfo
       run: |
         pip install requests beautifulsoup4 tweepy
     
