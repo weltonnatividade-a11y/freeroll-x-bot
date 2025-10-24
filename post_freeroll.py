@@ -195,9 +195,28 @@ def parse_generic(soup, url):
     print(f"Generic ({url.split('/')[-2]}): {len(eventos)} encontrados")
     return eventos, agend
 
+def buscar_senha_agendada(url, sala):
+    for tentativa in range(2):
+        try:
+            print(f"Tentando buscar senha para {sala} em {url}")
+            resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            texto = soup.get_text().lower()
+            senha_match = re.search(r'(?:password|senha|pw)[:\s]*([A-Z0-9]{4,10}|no password)', texto, re.IGNORECASE)
+            senha = senha_match.group(1) if senha_match else 'No password required'
+            if senha:
+                print(f"Senha encontrada para {sala}: {senha}")
+                return senha
+            time.sleep(2)
+        except Exception as e:
+            print(f"Erro ao buscar senha para {sala} em {url}: {e}")
+            time.sleep(2)
+    print(f"Nenhuma senha encontrada para {sala} em {url}")
+    return None
+
 def buscar_senhas():
     eventos, agendamentos = [], []
-    for url in SITES:  # Todos pra debug
+    for url in SITES:
         try:
             resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
             soup = BeautifulSoup(resp.text, 'html.parser')
@@ -223,8 +242,3 @@ def buscar_senhas():
     unique = [ev for ev in eventos if (ev['senha'], ev['sala']) not in seen and is_torneio_postavel(ev.get('data', 'hoje'), ev.get('hora', '')) and seen.add((ev['senha'], ev['sala']))]
     print(f"Total unique em 24h: {len(unique)}")
     return unique[:5], agendamentos
-
-def buscar_senha_agendada(url, sala):
-    for tentativa in range(2):
-        try:
-            print(f"T
