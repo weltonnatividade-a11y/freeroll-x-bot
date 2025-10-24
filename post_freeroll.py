@@ -29,7 +29,7 @@ except Exception as e:
 # Sites
 SITES = [
     "https://www.pokerlistings.com/free-rolls",
-    "https://freerollpass.com/pt",
+    "https://freerollpass.com/pt",  # Nota: este site está fora do ar (404)
     "https://www.thenuts.com/freerolls/",
     "https://freerollpasswords.com/",
     "https://www.raketherake.com/poker/freerolls",
@@ -50,7 +50,7 @@ SITE_MAP = {
     'betonline': {'lang': 'pt', 'link': 'https://record.betonlineaffiliates.ag/_uPhqzdPJjdaIPOZC7y3OxGNd7ZgqdRLk/1/'},
 }
 
-# Templates EN/PT (limpos)
+# Templates EN/PT
 TEMPLATES_EN = [
     "Upcoming freeroll on {sala}! PW: {senhas}. Starts soon - win real prizes free! ♠️ {link}",
     "Alert! Freeroll on {sala} incoming. Use: {senhas} & build your bankroll. Ready? #PokerFreeroll",
@@ -69,4 +69,135 @@ TEMPLATES_PT = [
 
 LINK_FIXO = "https://linkr.bio/pokersenha"
 
-def parse_horario_torneio(data_str, hora_str=None, timezone...
+# Função para parsear data e horário do torneio (corrigida)
+def parse_horario_torneio(data_str, hora_str=None, timezone_str="UTC"):
+    try:
+        # Normaliza a string de data
+        data_str = data_str.strip()
+        if hora_str:
+            hora_str = hora_str.strip()
+            data_hora_str = f"{data_str} {hora_str}"
+            formatos = [
+                "%Y-%m-%d %H:%M",  # Ex: 2025-10-24 14:30
+                "%d/%m/%Y %H:%M",  # Ex: 24/10/2025 14:30
+                "%Y/%m/%d %H:%M",  # Ex: 2025/10/24 14:30
+                "%d-%m-%Y %H:%M"   # Ex: 24-10-2025 14:30
+            ]
+        else:
+            data_hora_str = data_str
+            formatos = [
+                "%Y-%m-%d",  # Ex: 2025-10-24
+                "%d/%m/%Y",  # Ex: 24/10/2025
+                "%Y/%m/%d",  # Ex: 2025/10/24
+                "%d-%m-%Y"   # Ex: 24-10-2025
+            ]
+        
+        dt = None
+        for fmt in formatos:
+            try:
+                dt = datetime.strptime(data_hora_str, fmt)
+                break
+            except ValueError:
+                continue
+        
+        if not dt:
+            raise ValueError(f"Formato de data/hora inválido: {data_hora_str}")
+        
+        # Aplica o fuso horário
+        timezone = zoneinfo.ZoneInfo(timezone_str)
+        dt = dt.replace(tzinfo=timezone)
+        
+        # Converte para UTC
+        dt_utc = dt.astimezone(zoneinfo.ZoneInfo("UTC"))
+        return dt_utc
+    except Exception as e:
+        print(f"Erro ao parsear data/hora: {e}")
+        return None
+
+# Função para obter freerolls
+def obter_freerolls():
+    freerolls = []
+    for site in SITES:
+        try:
+            response = requests.get(site, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+            
+            # Ajuste os seletores conforme a estrutura de cada site
+            torneios = soup.find_all("tr", class_=["freeroll-row", "tournament-row", "event-row"]) or soup.find_all("div", class_=["freeroll", "tournament"])
+            
+            for torneio in torneios:
+                try:
+                    nome = torneio.find(["td", "div"], class_=["tournament-name", "name", "title"]) or torneio.find("h3") or torneio.find("h4")
+                    nome = nome.text.strip() if nome else "Freeroll Sem Nome"
+                    
+                    sala = torneio.find(["td", "div"], class_=["site", "room", "poker-room"]) or torneio.find("span", class_="room")
+                    sala = sala.text.strip().lower() if sala else None
+                    sala = next((key for key in SITE_MAP if key in sala), None) if sala else None
+                    
+                    data = torneio.find(["td", "div"], class_=["date", "start-date"])
+                    data = data.text.strip() if data else None
+                    
+                    hora = torneio.find(["td", "div"], class_=["time", "start-time"])
+                    hora = hora.text.strip() if hora else None
+                    
+                    senha = torneio.find(["td", "div"], class_=["password", "pass"])
+                    senha = senha.text.strip() if senha else "Sem senha"
+                    
+                    premio = torneio.find(["td", "div"], class_=["prize", "prizepool"])
+                    premio = premio.text.strip() if premio else "Não informado"
+                    
+                    if sala and data:
+                        data_hora = parse_horario_torneio(data, hora)
+                        if data_hora and data_hora > datetime.now(zoneinfo.ZoneInfo("UTC")):
+                            freerolls.append({
+                                "nome": nome,
+                                "sala": sala,
+                                "data_hora": data_hora,
+                                "senha": senha,
+                                "premio": premio,
+                                "link": SITE_MAP.get(sala, {}).get("link", LINK_FIXO),
+                                "lang": SITE_MAP.get(sala, {}).get("lang", "en")
+                            })
+                except Exception as e:
+                    print(f"Erro ao processar torneio em {site}: {e}")
+                    continue
+        except Exception as e:
+            print(f"Erro ao acessar {site}: {e}")
+            continue
+    return freerolls
+
+# Função para criar o texto do post
+def criar_texto_post(freeroll):
+    templates = TEMPLATES_PT if freeroll["lang"] == "pt" else TEMPLATES_EN
+    template = random.choice(templates)
+    return template.format(
+        sala=freeroll["sala"].capitalize(),
+        senhas=freeroll["senha"],
+        link=freeroll["link"]
+    )
+
+# Função principal para postar freerolls
+def postar_freerolls():
+    freerolls = obter_freerolls()
+    if not freerolls:
+        print("Nenhum freeroll encontrado.")
+        return
+    
+    posted = 0
+    for freeroll in freerolls:
+        if posted >= 12:  # Limite de 12 posts por dia
+            break
+        texto = criar_texto_post(freeroll)
+        try:
+            client.create_tweet(text=texto)
+            print(f"Postado: {texto}")
+            posted += 1
+            time.sleep(7200)  # Intervalo de 2 horas entre posts
+        except Exception as e:
+            print(f"Erro ao postar: {e}")
+            continue
+
+# Executa o bot
+if __name__ == "__main__":
+    postar_freerolls()
